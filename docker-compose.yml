@@ -1,0 +1,219 @@
+version: "3.8"
+
+services:
+  # Config servers
+  db-config1-1:
+    image: mongo:latest
+    container_name: db-config1-1
+    command: mongod --configsvr --replSet configReplSet --port 27017 --bind_ip_all --dbpath /data/db
+    ports:
+      - "27119:27017"
+    volumes:
+      - config1_data:/data/db
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  db-config2-1:
+    image: mongo:latest
+    container_name: db-config2-1
+    command: mongod --configsvr --replSet configReplSet --port 27017 --bind_ip_all --dbpath /data/db
+    ports:
+      - "27120:27017"
+    volumes:
+      - config2_data:/data/db
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  db-config3-1:
+    image: mongo:latest
+    container_name: db-config3-1
+    command: mongod --configsvr --replSet configReplSet --port 27017 --bind_ip_all --dbpath /data/db
+    ports:
+      - "27121:27017"
+    volumes:
+      - config3_data:/data/db
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Shards
+  db-shard1-1:
+    image: mongo:latest
+    container_name: db-shard1-1
+    command: mongod --shardsvr --replSet shard1ReplSet --port 27017 --bind_ip_all --dbpath /data/db
+    ports:
+      - "27118:27017"
+    volumes:
+      - shard1_data:/data/db
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  db-shard2-1:
+    image: mongo:latest
+    container_name: db-shard2-1
+    command: mongod --shardsvr --replSet shard2ReplSet --port 27017 --bind_ip_all --dbpath /data/db
+    ports:
+      - "27128:27017"
+    volumes:
+      - shard2_data:/data/db
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Config replica set initialization
+  config-setup:
+    image: mongo:latest
+    container_name: config-setup
+    depends_on:
+      db-config1-1:
+        condition: service_healthy
+      db-config2-1:
+        condition: service_healthy
+      db-config3-1:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    command: >
+      mongosh --host db-config1-1:27017 --eval "
+      rs.initiate({
+        _id: 'configReplSet',
+        configsvr: true,
+        members: [
+          { _id: 0, host: 'db-config1-1:27017' },
+          { _id: 1, host: 'db-config2-1:27017' },
+          { _id: 2, host: 'db-config3-1:27017' }
+        ]
+      });
+      "
+    restart: "no"
+
+  # Shard replica sets initialization
+  shard1-setup:
+    image: mongo:latest
+    container_name: shard1-setup
+    depends_on:
+      db-shard1-1:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    command: >
+      mongosh --host db-shard1-1:27017 --eval "
+      rs.initiate({
+        _id: 'shard1ReplSet',
+        members: [{ _id: 0, host: 'db-shard1-1:27017' }]
+      });
+      "
+    restart: "no"
+
+  shard2-setup:
+    image: mongo:latest
+    container_name: shard2-setup
+    depends_on:
+      db-shard2-1:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    command: >
+      mongosh --host db-shard2-1:27017 --eval "
+      rs.initiate({
+        _id: 'shard2ReplSet',
+        members: [{ _id: 0, host: 'db-shard2-1:27017' }]
+      });
+      "
+    restart: "no"
+
+  # Mongos router
+  mongos:
+    image: mongo:latest
+    container_name: db-mongos-1
+    ports:
+      - "27017:27017"
+    command: >
+      mongos --configdb configReplSet/db-config1-1:27017,db-config2-1:27017,db-config3-1:27017
+        --bind_ip_all --port 27017
+    depends_on:
+      config-setup:
+        condition: service_completed_successfully
+      shard1-setup:
+        condition: service_completed_successfully
+      shard2-setup:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # Cluster setup - add shards to the cluster
+  cluster-setup:
+    image: mongo:latest
+    container_name: cluster-setup
+    depends_on:
+      mongos:
+        condition: service_healthy
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    command: >
+      mongosh --host mongos:27017 --eval "
+      sh.addShard('shard1ReplSet/db-shard1-1:27017');
+      sh.addShard('shard2ReplSet/db-shard2-1:27017');
+      sh.status();
+      "
+    restart: "no"
+
+volumes:
+  config1_data:
+  config2_data:
+  config3_data:
+  shard1_data:
+  shard2_data:
+
+networks:
+  mongo-cluster:
+    driver: bridge
