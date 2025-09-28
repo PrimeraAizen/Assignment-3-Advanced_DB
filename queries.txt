@@ -1,0 +1,76 @@
+5.1. Sorting Urls
+db.logs.aggregate([
+  { $group: { _id: "$URL" } },
+  { $sort: { _id: 1 } }
+])
+
+5.2. Sorted list of IPs that accessed a given URL
+db.logs.aggregate([
+  { $match: { URL: "http://example.com/about" } },
+  { $group: { _id: "$IP" } },
+  { $sort: { _id: 1 } }
+])
+
+5.3. Sorted list of URLs accessed within a time range
+db.logs.aggregate([
+  {
+    $addFields: { timeStamp: { $toDate: "$timeStamp" } }
+  },
+  {
+    $match: {
+      timeStamp: {
+        $gte: ISODate("2025-09-01T00:00:00Z"),
+        $lte: ISODate("2025-09-30T23:59:59Z")
+      }
+    }
+  },
+  { $group: { _id: "$URL" } },
+  { $sort: { _id: 1 } }
+])
+
+5.4. Sorted list of URLs accessed by a specific IP
+db.logs.aggregate([
+  { $match: { IP: "192.168.0.10" } },
+  { $group: { _id: "$URL" } },
+  { $sort: { _id: 1 } }
+])
+6.1 db.logs.aggregate([
+{ $group: { _id: "$URL", totalDuration: { $sum: "$timeSpent" } } },
+{ $sort: { totalDuration: -1 } }
+])
+
+6.2 db.logs.aggregate([
+  { $group: { _id: "$URL", visitCount: { $sum: 1 } } },
+  { $sort: { visitCount: -1 } }
+])6.3db.logs.aggregate([
+  {
+    $addFields: {
+      ts: { $dateFromString: { dateString: "$timeStamp" } }
+    }
+  },
+  {
+    $match: {
+      ts: { $gte: ISODate("2025-09-01T00:00:00Z"), $lte: ISODate("2025-09-30T23:59:59Z") }
+    }
+  },
+  {
+    $group: {
+      _id: {
+        URL: "$URL",
+        day: { $dateToString: { format: "%Y-%m-%d", date: "$ts" } }
+      },
+      visitCount: { $sum: 1 }
+    }
+  },
+  { $sort: { "_id.URL": 1, visitCount: -1 } }
+])
+6.4 db.logs.aggregate([
+   {
+     $group: {
+       _id: "$IP",
+      totalVisits: { $sum: 1 },
+      totalDuration: { $sum: "$timeSpent" }
+    }
+  },
+   { $sort: { _id: 1 } }
+])
