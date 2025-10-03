@@ -241,6 +241,24 @@ services:
       "
     restart: "no"
 
+  # Auto-configure sharding for logs database
+  sharding-setup:
+    image: mongo:latest
+    container_name: sharding-setup
+    depends_on:
+      cluster-setup:
+        condition: service_completed_successfully
+    volumes:
+      - ./scripts:/scripts
+    networks:
+      - mongo-cluster
+    command: >
+      bash -c "
+      echo 'Running auto-sharding configuration...';
+      mongosh --host mongos:27017 < /scripts/auto_shard_logs.js
+      "
+    restart: "no"
+
 volumes:
   config1_data:
   config2_data:

@@ -60,12 +60,6 @@
         "timeSpent": 430
     },
     {
-        "URL": "http://example.com",
-        "IP": "127.0.0.1",
-        "timeStamp": "2025-09-01T09:12:34Z",
-        "timeSpent": 305
-    },
-    {
         "URL": "http://example.com/about",
         "IP": "192.168.0.15",
         "timeStamp": "2025-09-02T10:25:45Z",
